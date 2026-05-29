@@ -1,0 +1,14 @@
+{
+  "serverUrl": "http://127.0.0.1:15555",
+  "key": "your-client-key",
+  "salt": "your-client-salt",
+  "nginxPath": "",
+  "nginxReloadCmd": "nginx -s reload",
+  "domains": [
+    {
+      "name": "example.com",
+      "fullchainPath": "C:/nginx/ssl/example.com/fullchain.pem",
+      "privkeyPath": "C:/nginx/ssl/example.com/privkey.pem"
+    }
+  ]
+}

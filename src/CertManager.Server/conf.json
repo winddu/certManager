@@ -1,0 +1,29 @@
+{
+  "ver": "1",
+  "port": 15555,
+  "letsEncryptEmail": "your-email@example.com",
+  "certDir": "./certs",
+  "certCheckIntervalHours": 48,
+  "certRenewDays": 10,
+  "clients": [
+    {
+      "name": "your-client-name",
+      "key": "your-client-key",
+      "salt": "your-client-salt",
+      "privilege": [
+        "example.com"
+      ]
+    }
+  ],
+  "certs": [
+    {
+      "dnsName": "阿里云账号",
+      "dnsProvider": "阿里云",
+      "keyId": "your-aliyun-access-key-id",
+      "keySecret": "your-aliyun-access-key-secret",
+      "domains": [
+        "example.com"
+      ]
+    }
+  ]
+}

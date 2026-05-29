@@ -1,0 +1,36 @@
+# IDE
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+bin/
+obj/
+[Bb]in/
+[Dd]ebug/
+[Rr]elease/
+
+# Publish output
+publish/
+
+# NuGet packages
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# dotnet
+*.dotnetuser
+*.log
+
+# certs and runtime data
+**/certs/
+**/logs/
+*.acme_account_key.pem
+
+# OS files
+Thumbs.db
+*.DS_Store
