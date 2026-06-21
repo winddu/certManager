@@ -97,7 +97,7 @@ public class Program
 
         try
         {
-            config = JsonSerializer.Deserialize<ClientConfig>(json);
+            config = JsonSerializer.Deserialize(json, CertManagerJsonContext.Default.ClientConfig);
             if (config == null || string.IsNullOrEmpty(config.ServerUrl) || string.IsNullOrEmpty(config.Key) || config.Domains == null || config.Domains.Count == 0)
                 throw new Exception("配置缺少必要字段");
         }
@@ -133,7 +133,8 @@ public class Program
             ]
         };
 
-        var json = JsonSerializer.Serialize(example, new JsonSerializerOptions { WriteIndented = true });
+        var options = new JsonSerializerOptions { WriteIndented = true, TypeInfoResolver = CertManagerJsonContext.Default };
+        var json = JsonSerializer.Serialize(example, options);
         File.WriteAllText(ConfigPath, json);
         Console.Error.WriteLine($"示例配置文件已创建: {ConfigPath}");
     }
@@ -179,31 +180,34 @@ public class Program
                 Arguments = $"/query /tn \"{TaskName}\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true
+                RedirectStandardError = true,
+                CreateNoWindow = true
             };
             using var process = Process.Start(psi);
             if (process == null) return false;
-            process.WaitForExit();
-            return process.ExitCode == 0;
+            if (process.WaitForExit(3000) && process.ExitCode == 0)
+                return true;
+            try { process.Kill(); } catch { }
         }
-        catch
+        catch { }
+
+        // 文件检测兜底
+        try
         {
-            return false;
+            var sysRoot = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            var taskFile = Path.Combine(sysRoot, "Tasks", TaskName);
+            return File.Exists(taskFile);
         }
+        catch { return false; }
     }
 
     private static void InstallScheduledTask(Logger logger)
     {
-        var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+        var exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath))
         {
             logger.Error("Failed to get executable path");
             return;
-        }
-
-        if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            exePath = "dotnet.exe \"" + exePath + "\"";
         }
 
         var random = new Random();

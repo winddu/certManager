@@ -36,7 +36,7 @@ public class AcmeService
         }
 
         var ctx = new AcmeContext(WellKnownServers.LetsEncryptV2, accountKey);
-        await ctx.NewAccount($"mailto:{email}", true);
+        await ctx.NewAccount(email, true);
         _logger.LogInformation("ACME account ready");
 
         var order = await ctx.NewOrder(new[] { wildcardDomain });
@@ -46,7 +46,7 @@ public class AcmeService
         foreach (var auth in authorizations)
         {
             var dnsChallenge = await auth.Dns();
-            var txtValue = dnsChallenge.KeyAuthz;
+            var txtValue = accountKey.DnsTxt(dnsChallenge.Token);
             var authDomain = wildcardDomain.TrimStart('*', '.');
 
             _logger.LogInformation("DNS challenge: _acme-challenge.{Domain} TXT = {Value}", domain, txtValue);
@@ -81,7 +81,7 @@ public class AcmeService
         }
 
         var certKey = KeyFactory.NewKey(KeyAlgorithm.RS256);
-        var csrInfo = new CsrInfo { CommonName = domain };
+        var csrInfo = new CsrInfo { CommonName = wildcardDomain };
         var certChain = await order.Generate(csrInfo, certKey);
         _logger.LogInformation("Certificate finalized for {Domain}", wildcardDomain);
 

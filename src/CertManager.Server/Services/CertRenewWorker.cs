@@ -27,32 +27,30 @@ public class CertRenewWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("CertRenewWorker started, interval: {Hours}h", _config.CertCheckIntervalHours);
+        var allDomains = _config.Certs.SelectMany(c => c.Domains).Distinct().ToList();
+        _logger.LogInformation("CertRenewWorker started, managing {Count} domains: {Domains}",
+            allDomains.Count, string.Join(", ", allDomains));
+        _logger.LogInformation("Checking interval: {Hours}h, renew threshold: {Days} days",
+            _config.CertCheckIntervalHours, _config.CertRenewDays);
+        _logger.LogInformation("Starting initial certificate check for all domains...");
+
+        await RunCheck(allDomains, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                await CheckAndRenewCertsAsync(stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking certificates");
-            }
-
+            _logger.LogInformation("Next check in {Hours}h", _config.CertCheckIntervalHours);
             await Task.Delay(TimeSpan.FromHours(_config.CertCheckIntervalHours), stoppingToken);
+
+            await RunCheck(allDomains, stoppingToken);
         }
     }
 
-    private async Task CheckAndRenewCertsAsync(CancellationToken ct)
+    private async Task RunCheck(List<string> domains, CancellationToken ct)
     {
-        _logger.LogInformation("Starting certificate check...");
-        var allDomains = _config.Certs.SelectMany(c => c.Domains).Distinct().ToList();
-
-        foreach (var domain in allDomains)
+        _logger.LogInformation("=== Starting certificate check ===");
+        foreach (var domain in domains)
         {
             if (ct.IsCancellationRequested) break;
-
             try
             {
                 await CheckDomainCertAsync(domain, ct);
@@ -62,6 +60,7 @@ public class CertRenewWorker : BackgroundService
                 _logger.LogError(ex, "Error processing domain {Domain}", domain);
             }
         }
+        _logger.LogInformation("=== Certificate check complete ===");
     }
 
     private async Task CheckDomainCertAsync(string domain, CancellationToken ct)
@@ -120,7 +119,7 @@ public class CertRenewWorker : BackgroundService
         {
             var pem = File.ReadAllText(fullchainFile);
             var cert = X509Certificate2.CreateFromPem(pem);
-            var daysLeft = (cert.NotAfter - DateTime.UtcNow).TotalDays;
+            var daysLeft = (cert.NotAfter - SystemTime.UtcNow).TotalDays;
 
             _logger.LogInformation("Certificate expires in {DaysLeft:F1} days, renew threshold: {RenewDays} days",
                 daysLeft, _config.CertRenewDays);
@@ -129,8 +128,8 @@ public class CertRenewWorker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to parse certificate, will renew");
-            return true;
+            _logger.LogWarning(ex, "Failed to parse certificate, skipping renewal");
+            return false;
         }
     }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using CertManager.Shared.Models;
 
 namespace CertManager.Server.Logging;
 
@@ -40,7 +41,7 @@ public class DailyFileLoggerProvider : ILoggerProvider
         {
             if (!IsEnabled(logLevel)) return;
 
-            var now = DateTime.Now;
+            var now = SystemTime.Now;
             var logDir = Path.Combine(_logDir, now.ToString("yyyy"), now.ToString("MM"));
             Directory.CreateDirectory(logDir);
 

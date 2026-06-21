@@ -178,25 +178,21 @@ CertManager.Client.exe
 - [.NET 8 SDK](https://dotnet.microsoft.com/zh-cn/download/dotnet/8.0)
 - Windows x64
 
-### 发布命令
-
-在项目根目录执行：
+### AOT 编译发布
 
 ```bash
-# 发布服务端
+# 发布服务端（~27 MB）
 dotnet publish src\CertManager.Server\CertManager.Server.csproj ^
   -c Release -r win-x64 --self-contained true ^
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
-  -p:DebugType=embedded -o publish\server
+  -p:PublishAot=true -o publish\server
 
-# 发布客户端
+# 发布客户端（~6 MB）
 dotnet publish src\CertManager.Client\CertManager.Client.csproj ^
   -c Release -r win-x64 --self-contained true ^
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true ^
-  -p:DebugType=embedded -o publish\client
+  -p:PublishAot=true -o publish\client
 ```
 
-发布后在 `publish/server/` 和 `publish/client/` 目录得到单文件 exe，可直接拷贝到目标机器运行，无需安装 .NET 运行时。
+发布产物为单 exe 文件，可直接拷贝到目标机器运行，无需安装 .NET 运行时。
 
 ## 部署流程
 

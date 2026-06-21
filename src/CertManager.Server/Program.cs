@@ -89,7 +89,7 @@ public class Program
 
         try
         {
-            config = JsonSerializer.Deserialize<ServerConfig>(json);
+            config = JsonSerializer.Deserialize(json, CertManagerJsonContext.Default.ServerConfig);
             if (config == null || string.IsNullOrEmpty(config.LetsEncryptEmail) || config.Clients == null || config.Certs == null)
                 throw new Exception("配置缺少必要字段");
         }
@@ -138,7 +138,8 @@ public class Program
             ]
         };
 
-        var json = JsonSerializer.Serialize(example, new JsonSerializerOptions { WriteIndented = true });
+        var jsonOptions = new JsonSerializerOptions { WriteIndented = true, TypeInfoResolver = CertManagerJsonContext.Default };
+        var json = JsonSerializer.Serialize(example, jsonOptions);
         File.WriteAllText(ConfigPath, json);
         Console.Error.WriteLine($"示例配置文件已创建: {ConfigPath}");
     }

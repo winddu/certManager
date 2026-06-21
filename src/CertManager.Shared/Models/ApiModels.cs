@@ -20,6 +20,7 @@ public class CertFileInfo
     public string Domain { get; set; } = "";
     public string FullchainPem { get; set; } = "";
     public string PrivkeyPem { get; set; } = "";
+    public DateTime NotAfter { get; set; }
 }
 
 public class ApiResponse

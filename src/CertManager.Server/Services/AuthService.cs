@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using CertManager.Shared.Models;
 
 namespace CertManager.Server.Services;
@@ -22,10 +23,26 @@ public class AuthService
             ? DateTimeOffset.FromUnixTimeMilliseconds(tsLong)
             : DateTimeOffset.MinValue;
 
-        if (Math.Abs((DateTimeOffset.UtcNow - ts).TotalMinutes) > 5)
+        if (Math.Abs((new DateTimeOffset(SystemTime.UtcNow) - ts).TotalMinutes) > 5)
             return null;
 
-        var expectedSign = ComputeSign(client.Salt, timestamp, body);
+        // 反序列化请求，去掉 sign 字段后重新序列化，确保签名时不含 sign
+        var cleanBody = body;
+        if (body != null)
+        {
+            try
+            {
+                var req = JsonSerializer.Deserialize(body, CertManagerJsonContext.Default.CertDownloadRequest);
+                if (req != null)
+                {
+                    req.Sign = "";
+                    cleanBody = JsonSerializer.Serialize(req, CertManagerJsonContext.Default.CertDownloadRequest);
+                }
+            }
+            catch { }
+        }
+
+        var expectedSign = ComputeSign(client.Salt, timestamp, cleanBody);
 
         if (sign != expectedSign) return null;
 

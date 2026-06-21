@@ -7,7 +7,6 @@
     <RootNamespace>CertManager.Client</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Certes" Version="3.0.4" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
   </ItemGroup>
   <ItemGroup>

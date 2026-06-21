@@ -14,7 +14,7 @@ public class CertDownloadService
     public CertDownloadService(ILogger<CertDownloadService> logger)
     {
         _logger = logger;
-        _httpClient = new HttpClient();
+        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
     }
 
     public async Task<bool> DownloadCertificatesAsync(ClientConfig config)
@@ -31,13 +31,14 @@ public class CertDownloadService
             Domains = domains
         };
 
-        var bodyJson = JsonSerializer.Serialize(request);
+        // bodyJson 包含 sign:""，服务端会去掉 sign 再计算签名
+        var bodyJson = JsonSerializer.Serialize(request, CertManagerJsonContext.Default.CertDownloadRequest);
         request.Sign = ComputeSign(config.Salt, timestamp, bodyJson);
-
-        var httpContent = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+        var finalJson = JsonSerializer.Serialize(request, CertManagerJsonContext.Default.CertDownloadRequest);
 
         try
         {
+            var httpContent = new StringContent(finalJson, Encoding.UTF8, "application/json");
             var response = await _httpClient.PostAsync($"{config.ServerUrl}/cert/download", httpContent);
             var responseBody = await response.Content.ReadAsStringAsync();
 
@@ -47,7 +48,7 @@ public class CertDownloadService
                 return false;
             }
 
-            var apiResponse = JsonSerializer.Deserialize<ApiResponse>(responseBody);
+            var apiResponse = JsonSerializer.Deserialize(responseBody, CertManagerJsonContext.Default.ApiResponse);
             if (apiResponse == null || apiResponse.Code != 0)
             {
                 _logger.LogError("API error: {Code} - {Message}", apiResponse?.Code, apiResponse?.Message);
