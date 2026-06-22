@@ -15,6 +15,7 @@ import java.util.*;
 public class CertManagerClient {
 
     static final String TASK_NAME = "CertManagerClient";
+    static final boolean IS_WIN = System.getProperty("os.name").toLowerCase().contains("win");
     static String BASE_DIR;
     static String CONFIG_PATH;
     static String LOG_DIR;
@@ -187,8 +188,6 @@ public class CertManagerClient {
 
     static void reloadNginx(JsonObject config) {
         String nginxPath = config.getString("nginxPath", "");
-        String reloadCmd = config.getString("nginxReloadCmd", "nginx -s reload");
-
         if (nginxPath.isEmpty()) {
             String detected = autoDetectNginx();
             if (detected != null) {
@@ -199,89 +198,143 @@ public class CertManagerClient {
             }
         }
 
-        if (!nginxPath.isEmpty()) {
-            File nginxExe = new File(nginxPath);
-            File nginxDir = nginxExe.getParentFile();
+        if (nginxPath.isEmpty()) {
+            log("WARN", "No nginx path configured, skipping nginx reload");
+            return;
+        }
 
-            // 先检查 nginx 是否在运行
-            boolean running = false;
-            try {
+        File nginxExe = new File(nginxPath);
+        File nginxDir = nginxExe.getParentFile();
+        String exeName = IS_WIN ? "nginx.exe" : "nginx";
+
+        // check if running
+        boolean running = isProcessRunning(exeName);
+
+        try {
+            ProcessBuilder pb;
+            if (running) {
+                pb = new ProcessBuilder(nginxExe.getPath(), "-s", "reload");
+                log("INFO", "Nginx is running, reloading");
+            } else {
+                pb = new ProcessBuilder(nginxExe.getPath());
+                log("INFO", "Nginx not running, starting");
+            }
+            pb.directory(nginxDir);
+            Process p = pb.start();
+            p.waitFor();
+            if (p.exitValue() == 0) {
+                log("INFO", "Nginx operation completed successfully");
+            } else {
+                log("WARN", "Nginx returned exit code " + p.exitValue());
+            }
+        } catch (Exception e) {
+            log("ERROR", "Failed to run nginx: " + e.getMessage());
+        }
+    }
+
+    static boolean isProcessRunning(String name) {
+        try {
+            if (IS_WIN) {
                 Process p = Runtime.getRuntime().exec(
-                    "tasklist /fi \"imagename eq nginx.exe\" /nh");
+                    "tasklist /fi \"imagename eq " + name + "\" /nh");
                 BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), "GBK"));
                 String line;
                 while ((line = r.readLine()) != null) {
-                    if (line.contains("nginx.exe")) { running = true; break; }
+                    if (line.contains(name)) return true;
                 }
-            } catch (Exception ignored) {}
-
-            try {
-                ProcessBuilder pb;
-                if (running) {
-                    pb = new ProcessBuilder(nginxExe.getPath(), "-s", "reload");
-                    log("INFO", "Nginx is running, reloading");
-                } else {
-                    pb = new ProcessBuilder(nginxExe.getPath());
-                    log("INFO", "Nginx not running, starting");
-                }
-                pb.directory(nginxDir);
-                Process p = pb.start();
+            } else {
+                Process p = Runtime.getRuntime().exec(
+                    new String[]{"sh", "-c", "pgrep -x " + name + " > /dev/null 2>&1"});
                 p.waitFor();
-                if (p.exitValue() == 0) {
-                    log("INFO", "Nginx operation completed successfully");
-                } else {
-                    log("WARN", "Nginx returned exit code " + p.exitValue());
-                }
-            } catch (Exception e) {
-                log("ERROR", "Failed to run nginx: " + e.getMessage());
+                if (p.exitValue() == 0) return true;
+                // fallback
+                p = Runtime.getRuntime().exec(
+                    new String[]{"sh", "-c", "ps aux | grep -v grep | grep " + name});
+                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                if (r.readLine() != null) return true;
             }
-        } else {
-            log("WARN", "No nginx path configured, skipping nginx reload");
-        }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     static String autoDetectNginx() {
         try {
-            Process p = Runtime.getRuntime().exec(
-                "wmic process where \"name='nginx.exe'\" get executablepath");
-            BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String line;
-            while ((line = r.readLine()) != null) {
-                line = line.trim();
-                if (line.toLowerCase().endsWith("nginx.exe")) return line;
+            if (IS_WIN) {
+                Process p = Runtime.getRuntime().exec(
+                    "wmic process where \"name='nginx.exe'\" get executablepath");
+                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (line.toLowerCase().endsWith("nginx.exe")) return line;
+                }
+            } else {
+                Process p = Runtime.getRuntime().exec(new String[]{"which", "nginx"});
+                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line = r.readLine();
+                if (line != null && !line.isEmpty()) return line.trim();
             }
         } catch (Exception ignored) {}
         return null;
     }
 
     static boolean isTaskInstalled() {
-        String sysRoot = System.getenv("SystemRoot");
-        if (sysRoot == null) sysRoot = "C:\\Windows";
-        File f1 = new File(sysRoot + "\\System32\\Tasks\\" + TASK_NAME);
-        if (f1.exists()) return true;
-        File f2 = new File(sysRoot + "\\Sysnative\\Tasks\\" + TASK_NAME);
-        if (f2.exists()) return true;
-        return false;
+        try {
+            if (IS_WIN) {
+                String sysRoot = System.getenv("SystemRoot");
+                if (sysRoot == null) sysRoot = "C:\\Windows";
+                if (new File(sysRoot + "\\System32\\Tasks\\" + TASK_NAME).exists()) return true;
+                if (new File(sysRoot + "\\Sysnative\\Tasks\\" + TASK_NAME).exists()) return true;
+                // fallback: check schtasks
+                Process p = Runtime.getRuntime().exec(
+                    "schtasks /query /tn \"" + TASK_NAME + "\" /nh");
+                p.waitFor();
+                return p.exitValue() == 0;
+            } else {
+                Process p = Runtime.getRuntime().exec(
+                    new String[]{"sh", "-c", "crontab -l 2>/dev/null | grep -q " + TASK_NAME});
+                p.waitFor();
+                return p.exitValue() == 0;
+            }
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     static void installTask() {
         try {
             String jarPath = getJarPath();
-            String exePath = "java -jar \"" + jarPath + "\"";
-
-            int hour = 1 + new Random().nextInt(3);
-            int minute = new Random().nextInt(60);
-            String timeStr = String.format("%02d:%02d", hour, minute);
-
-            String cmd = "schtasks /create /tn \"" + TASK_NAME + "\" /tr \""
-                + exePath + "\" /sc daily /st " + timeStr + " /f";
-            log("INFO", "Creating scheduled task...");
-            Process p = Runtime.getRuntime().exec(cmd);
-            p.waitFor();
-            if (p.exitValue() == 0) {
-                log("INFO", "Scheduled task '" + TASK_NAME + "' created, will run daily at " + timeStr);
+            if (IS_WIN) {
+                String exePath = "java -jar \"" + jarPath + "\"";
+                int hour = 1 + new Random().nextInt(3);
+                int minute = new Random().nextInt(60);
+                String timeStr = String.format("%02d:%02d", hour, minute);
+                String cmd = "schtasks /create /tn \"" + TASK_NAME + "\" /tr \""
+                    + exePath + "\" /sc daily /st " + timeStr + " /f";
+                log("INFO", "Creating Windows scheduled task...");
+                Process p = Runtime.getRuntime().exec(cmd);
+                p.waitFor();
+                if (p.exitValue() == 0) {
+                    log("INFO", "Scheduled task '" + TASK_NAME + "' created, will run daily at " + timeStr);
+                } else {
+                    log("ERROR", "Failed to create scheduled task");
+                }
             } else {
-                log("ERROR", "Failed to create scheduled task");
+                int hour = 1 + new Random().nextInt(3);
+                int minute = new Random().nextInt(60);
+                String cronTime = String.format("%d %d * * *", minute, hour);
+                String cronLine = cronTime + " java -jar \"" + jarPath + "\" >> \""
+                    + BASE_DIR + "/logs/cron.log\" 2>&1";
+                String cmd = "(crontab -l 2>/dev/null | grep -v " + TASK_NAME
+                    + "; echo \"" + cronLine + "\") | crontab -";
+                log("INFO", "Creating Linux crontab entry...");
+                Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+                p.waitFor();
+                if (p.exitValue() == 0) {
+                    log("INFO", "Crontab entry for '" + TASK_NAME + "' created, will run daily at " + hour + ":" + String.format("%02d", minute));
+                } else {
+                    log("ERROR", "Failed to create crontab entry, exit code " + p.exitValue());
+                }
             }
         } catch (Exception e) {
             log("ERROR", "Failed to install task: " + e.getMessage());
@@ -473,6 +526,7 @@ public class CertManagerClient {
     }
 
     static void generateExampleConfig() {
+        String pathPrefix = IS_WIN ? "C:/nginx/ssl" : "/etc/nginx/ssl";
         String json =
             "{\n" +
             "  \"serverUrl\": \"http://127.0.0.1:15555\",\n" +
@@ -484,8 +538,8 @@ public class CertManagerClient {
             "  \"domains\": [\n" +
             "    {\n" +
             "      \"name\": \"example.com\",\n" +
-            "      \"fullchainPath\": \"C:/nginx/ssl/example.com/fullchain.pem\",\n" +
-            "      \"privkeyPath\": \"C:/nginx/ssl/example.com/privkey.pem\"\n" +
+            "      \"fullchainPath\": \"" + pathPrefix + "/example.com/fullchain.pem\",\n" +
+            "      \"privkeyPath\": \"" + pathPrefix + "/example.com/privkey.pem\"\n" +
             "    }\n" +
             "  ]\n" +
             "}\n";
